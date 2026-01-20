@@ -1,0 +1,25 @@
+# База данных
+*.db
+*.sqlite3
+
+# Виртуальное окружение
+venv/
+.venv/
+env/
+
+# Кэш Python
+__pycache__/
+*.py[cod]
+*$py.class
+
+# Настройки IDE (VS Code, PyCharm)
+.vscode/
+.idea/
+
+# Специфично для Flet
+build/
+dist/
+
+# Системные файлы
+.DS_Store
+Thumbs.db
