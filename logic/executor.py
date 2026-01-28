@@ -1,91 +1,106 @@
-import subprocess, threading, flet as ft
+import subprocess
+import threading
+import flet as ft
 from database.crud import get_full_instruction
+from ui.components.log_window import build_log_dialog
 
-def execute_instruction(inst_id, log_view: ft.ListView):
-    def add_log(msg, color=ft.Colors.WHITE):
-        log_view.controls.append(ft.Text(msg, color=color, font_family="monospace"))
+def _run_process_logic(inst_id, log_view: ft.ListView, page):
+    """Внутренняя функция с логикой потоков и subprocess"""
+
+    def add_log(text, color=ft.Colors.WHITE, is_bold=False):
+        """Хелпер для безопасного обновления UI из потока"""
+        log_view.controls.append(
+            ft.Text(
+                text, 
+                color=color, 
+                weight=ft.FontWeight.BOLD if is_bold else ft.FontWeight.NORMAL,
+                font_family="monospace",
+                selectable=True
+            )
+        )
         log_view.update()
 
-    def run_worker():
-        data = get_full_instruction(inst_id)
-        add_log(f">>> Запуск: {data['name']}", ft.Colors.CYAN)
-        
-        for dep in data['dependencies']:
-            add_log(f"Проверка: {dep['name']}...")
-            res = subprocess.run(dep['check_command'], shell=True, capture_output=True, text=True)
-            add_log(res.stdout or res.stderr)
+    def run_bash(command):
+        try:
+            process = subprocess.Popen(
+                command,
+                shell=True,
+                stdout=subprocess.PIPE,
+                stderr=subprocess.STDOUT,
+                text=True,
+                encoding='utf-8',
+                errors='replace'
+            )
+            # Читаем вывод в реальном времени
+            if process.stdout:
+                for line in iter(process.stdout.readline, ""):
+                    add_log(f"  {line.strip()}", color=ft.Colors.GREY_400)
             
-        for task in data['tasks']:
-            add_log(f"Задача {task['sequence']}: {task['name']}", ft.Colors.AMBER)
-            for sol in task['solutions']:
-                proc = subprocess.Popen(sol['exec_command'], shell=True, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True)
-                for line in proc.stdout:
-                    add_log(f"  {line.strip()}")
-                proc.wait()
-        add_log(">>> Готово", ft.Colors.GREEN)
+            process.wait()
+            return process.returncode
+        except Exception as e:
+            add_log(f"System Error: {str(e)}", color=ft.Colors.RED)
+            return -1
 
-    threading.Thread(target=run_worker, daemon=True).start()
+    def worker():
+        # 1. Получаем данные
+        data = get_full_instruction(inst_id)
+        if not data:
+            add_log("Error: Инструкция не найдена.", ft.Colors.RED)
+            return
 
-def open_log_window(page: ft.Page, inst_id):
-    log_view = ft.ListView(expand=True, spacing=2, padding=10, auto_scroll=True)
+        add_log(f"🚀 ЗАПУСК: {data['name']}", ft.Colors.CYAN, True)
+        add_log("="*40, ft.Colors.GREY_700)
 
-    # --- Функции обработчики ---
+        # 2. Зависимости
+        if data["dependencies"]:
+            add_log("📦 Проверка зависимостей...", is_bold=True)
+            for dep in data["dependencies"]:
+                add_log(f"Checking: {dep['name']}...", ft.Colors.BLUE_200)
+                if dep['check_command']:
+                    code = run_bash(dep['check_command'])
+                    if code == 0:
+                        add_log("  ✅ OK", ft.Colors.GREEN)
+                    else:
+                        add_log(f"  ⚠️ FAIL (Code {code})", ft.Colors.AMBER)
+                else:
+                    add_log("  ℹ️ Пропущено (нет команды)", ft.Colors.GREY)
 
-    def clear_logs(e):
-        """Очищает содержимое списка логов"""
-        log_view.controls.clear()
-        page.update()
+        # 3. Задачи
+        add_log("-" * 40, ft.Colors.GREY_700)
+        for task in data["tasks"]:
+            add_log(f"🔹 Задача {task['sequence']}: {task['name']}", ft.Colors.BLUE_100)
+            
+            for sol in task["solutions"]:
+                add_log(f"Exec: {sol['exec_command']}", ft.Colors.GREY_600)
+                code = run_bash(sol['exec_command'])
+                if code != 0:
+                    add_log(f"❌ ОШИБКА ВЫПОЛНЕНИЯ (Code {code})", ft.Colors.RED)
+                    add_log("Остановка процесса.", ft.Colors.RED, True)
+                    return
 
-    async def copy_all_logs(e):
-        """Собирает текст изо всех строк и копирует в буфер обмена"""
-        # Извлекаем текст из каждого контрола Text в списке
-        full_log_text = "\n".join([c.value for c in log_view.controls if isinstance(c, ft.Text)])
-        
-        if full_log_text:
-            await page.clipboard.set(full_log_text)
-            # Показываем уведомление пользователю
-            page.show_dialog(    
-                ft.SnackBar(ft.Text("Лог успешно скопирован в буфер обмена!"), bgcolor=ft.Colors.GREEN_700)
-            )
-            page.update()
-        else:
-            page.show_dialog(
-                ft.SnackBar(ft.Text("Лог пуст, нечего копировать."), bgcolor=ft.Colors.RED_700)
-            )
+        add_log("="*40, ft.Colors.GREY_700)
+        add_log("🏁 ВЫПОЛНЕНИЕ ЗАВЕРШЕНО", ft.Colors.GREEN, True)
 
-    def close_dialog(e):
-        dialog.open = False
-        page.update()
+    # Запускаем поток
+    threading.Thread(target=worker, daemon=True).start()
 
+def open_execution_logs(page: ft.Page, inst_id):
+    """
+    Точка входа:
+    1. Создает UI (через build_log_dialog)
+    2. Открывает окно
+    3. Запускает логику (_run_process_logic)
+    """
+    # Получаем готовые компоненты из ui/components/log_window.py
+    dialog, log_view = build_log_dialog(page)
 
-    # --- Создание диалогового окна ---  
-
-    dialog = ft.AlertDialog(
-        title=ft.Text("Логи выполнения"),
-        content=ft.Container(content=log_view, width=600, height=400, bgcolor=ft.Colors.BLACK, border_radius=5,),
-        actions=[
-            # Кнопка Копировать
-            ft.TextButton(
-                "Копировать весь лог", 
-                icon=ft.Icons.COPY, 
-                on_click=copy_all_logs
-            ),
-            # Кнопка Очистить
-            ft.TextButton(
-                "Очистить", 
-                icon=ft.Icons.DELETE_SWEEP, 
-                icon_color=ft.Colors.RED_400,
-                on_click=clear_logs
-            ),
-            # Кнопка Закрыть
-            ft.TextButton("Закрыть", on_click=close_dialog),
-            #ft.TextButton("Закрыть", on_click=lambda _: setattr(dialog, "open", False) or page.update())
-        ],
-        actions_alignment=ft.MainAxisAlignment.END,
-    )
-
+    # Монтируем и открываем
     if dialog not in page.overlay:
         page.overlay.append(dialog)
     dialog.open = True
+    
     page.update()
-    execute_instruction(inst_id, log_view)
+
+    # Передаем управление логике, скармливая ей log_view для вывода
+    _run_process_logic(inst_id, log_view, page)
