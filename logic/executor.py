@@ -3,7 +3,9 @@ import threading
 import flet as ft
 from database.crud import get_full_instruction
 from ui.components.log_window import build_log_dialog
+from core.logger import logger 
 
+@logger.catch(reraise=True) # reraise=True выбросит ошибку дальше, False - подавит её
 def _run_process_logic(inst_id, log_view: ft.ListView, page):
     """Внутренняя функция с логикой потоков и subprocess"""
 
