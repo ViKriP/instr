@@ -1,6 +1,13 @@
 import sys
 from loguru import logger
 from core.config import settings
+#import logging
+
+# class InterceptHandler(logging.Handler):
+#     def emit(self, record):
+#         # Перенаправляем стандартные логи в Loguru
+#         logger_opt = logger.opt(depth=6, exception=record.exc_info)
+#         logger_opt.log(record.levelname, record.getMessage())
 
 def setup_logger():
     # 1. Удаляем стандартный обработчик (чтобы не дублировать логи в консоль, если нужно, или перенастроить)
@@ -25,6 +32,9 @@ def setup_logger():
         # enqueue=True - Важно! Делает запись асинхронной и потокобезопасной
         enqueue=True 
     )
+    
+    # 4. Перенаправляем стандартные логи в Loguru
+    #logging.basicConfig(handlers=[InterceptHandler()], level=0, force=True)
 
     return logger
 
