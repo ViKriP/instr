@@ -13,4 +13,7 @@ class Settings:
     # Преобразуем строку "True" в булево значение
     LOG_SERIALIZE = os.getenv("LOG_SERIALIZE", "False").lower() == "true"
 
+    LOG_PATH_ERRORS = os.getenv("LOG_PATH_ERRORS", "logs/errors.log")
+    LOG_SERIALIZE_ERRORS = os.getenv("LOG_SERIALIZE_ERRORS", "False").lower() == "true"
+
 settings = Settings()

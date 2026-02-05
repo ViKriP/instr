@@ -1,13 +1,6 @@
 import sys
 from loguru import logger
 from core.config import settings
-#import logging
-
-# class InterceptHandler(logging.Handler):
-#     def emit(self, record):
-#         # Перенаправляем стандартные логи в Loguru
-#         logger_opt = logger.opt(depth=6, exception=record.exc_info)
-#         logger_opt.log(record.levelname, record.getMessage())
 
 def setup_logger():
     # 1. Удаляем стандартный обработчик (чтобы не дублировать логи в консоль, если нужно, или перенастроить)
@@ -17,24 +10,37 @@ def setup_logger():
     logger.add(
         sys.stderr,
         level=settings.LOG_LEVEL,
+        backtrace=False,
         format="<green>{time:YYYY-MM-DD HH:mm:ss}</green> | <level>{level: <8}</level> | <cyan>{name}</cyan>:<cyan>{function}</cyan>:<cyan>{line}</cyan> - <level>{message}</level>"
     )
 
     # 3. Добавляем вывод в файл с ротацией, архивацией и JSON (если включено)
     logger.add(
         settings.LOG_PATH,
-        rotation=settings.LOG_ROTATION,     # 5 MB
-        retention=settings.LOG_RETENTION,   # 15 days
-        compression=settings.LOG_COMPRESSION, # zip
-        level=settings.LOG_LEVEL,
-        serialize=settings.LOG_SERIALIZE,   # JSON or Text
+        level=settings.LOG_LEVEL,               # Например, DEBUG или INFO
+        rotation=settings.LOG_ROTATION,         # 5 MB
+        retention=settings.LOG_RETENTION,       # 15 days
+        compression=settings.LOG_COMPRESSION,   # zip
+        serialize=settings.LOG_SERIALIZE,       # JSON or Text
         encoding="utf-8",
-        # enqueue=True - Важно! Делает запись асинхронной и потокобезопасной
-        enqueue=True 
+        enqueue=True,                           # enqueue=True - Важно! Делает запись асинхронной и потокобезопасной
+        backtrace=False                         # Сохранять подробный трейс ошибки
     )
-    
-    # 4. Перенаправляем стандартные логи в Loguru
-    #logging.basicConfig(handlers=[InterceptHandler()], level=0, force=True)
+
+    # 4. ФАЙЛ ОШИБОК (Только ERROR и CRITICAL)
+    logger.add(
+        settings.LOG_PATH_ERRORS,
+        level="ERROR",
+        rotation=settings.LOG_ROTATION,
+        retention=settings.LOG_RETENTION,
+        compression=settings.LOG_COMPRESSION,
+        serialize=settings.LOG_SERIALIZE_ERRORS,
+        encoding="utf-8",
+        enqueue=True,
+        backtrace=False,                         # Сохранять подробный трейс ошибки
+        diagnose=True,                           # Сохранять значения переменных при ошибке
+        format="{time:YYYY-MM-DD HH:mm:ss} | {level} | {name}:{function}:{line} | {message}"
+    )
 
     return logger
 
