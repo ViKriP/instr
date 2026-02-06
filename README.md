@@ -46,7 +46,30 @@
    ```bash
    pip install -r requirements.txt
    ```
+4. Создайте файл `.env` в корневой директории проекта
+   - Скопируйте и настройте следующие параметры (пример):
 
+   ```ini
+   # Уровень логирования (DEBUG, INFO)
+   LOG_LEVEL=DEBUG
+   LOG_PATH=logs/app.log
+
+   # Ротация и хранение
+   LOG_ROTATION=5 MB
+   LOG_RETENTION=15 days
+   LOG_COMPRESSION=zip
+
+   # Формат (True для JSON, False для обычного текста)
+   LOG_SERIALIZE=False
+
+   # Для отдельного логирования только ошибок
+   LOG_PATH_ERRORS=logs/errors.log
+   LOG_SERIALIZE_ERRORS=False          # True - JSON
+   ```
+   - Или скопируйте шаблон файла настроек:
+   ```bash
+   cp .env.example .env
+   ```
 ### Запуск
    ```bash
    python3 main.py
@@ -56,6 +79,7 @@
 - Интерфейс: [Flet](https://flet.dev/) (Flutter for Python)
 - База данных: [SQLite](https://sqlite.org/)
 - Выполнение команд: subprocess & threading
+- Переменные окружения: [python-dotenv](https://pypi.org/project/python-dotenv/)
 
 ## 📝 Лицензия
 Распространяется под лицензией MIT. Подробности в файле LICENSE.
