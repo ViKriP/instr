@@ -3,9 +3,12 @@ import threading
 import flet as ft
 from database.crud import get_full_instruction
 from ui.components.log_window import build_log_dialog
+from core.logger import logger 
 
+@logger.catch(reraise=True) # reraise=True выбросит ошибку дальше, False - подавит её
 def _run_process_logic(inst_id, log_view: ft.ListView, page):
     """Внутренняя функция с логикой потоков и subprocess"""
+    logger.bind(instruction_id=inst_id).info("Начало выполнения инструкции") # bind добавляет контекст
 
     def add_log(text, color=ft.Colors.WHITE, is_bold=False):
         """Хелпер для безопасного обновления UI из потока"""
@@ -55,14 +58,17 @@ def _run_process_logic(inst_id, log_view: ft.ListView, page):
         # 2. Зависимости
         if data["dependencies"]:
             add_log("📦 Проверка зависимостей...", is_bold=True)
+            logger.debug("Запуск проверки зависимостей...")
             for dep in data["dependencies"]:
                 add_log(f"Checking: {dep['name']}...", ft.Colors.BLUE_200)
                 if dep['check_command']:
                     code = run_bash(dep['check_command'])
                     if code == 0:
                         add_log("  ✅ OK", ft.Colors.GREEN)
+                        logger.success(f"Инструкция {inst_id} выполнена успешно!")
                     else:
                         add_log(f"  ⚠️ FAIL (Code {code})", ft.Colors.AMBER)
+                        logger.exception(f"Инструкция {inst_id} не выполнена!")
                 else:
                     add_log("  ℹ️ Пропущено (нет команды)", ft.Colors.GREY)
 

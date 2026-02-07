@@ -16,7 +16,7 @@ def HomeView(page: ft.Page):
         )
 
     return ft.View(route="/", controls=[
-        ft.AppBar(title=ft.Text("Мои инструкции"), bgcolor=ft.Colors.ON_SURFACE_VARIANT),
+        ft.AppBar(title=ft.Text("Мои инструкции", color=ft.Colors.BLACK), bgcolor=ft.Colors.ON_SURFACE_VARIANT),
         list_items
     ])
 

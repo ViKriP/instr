@@ -23,3 +23,12 @@ dist/
 # Системные файлы
 .DS_Store
 Thumbs.db
+
+# Логи Loguru
+logs/
+*.log
+*.zip
+
+# Конфигурация окружения
+.env
+.env.local
