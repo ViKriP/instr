@@ -94,3 +94,26 @@ def add_task_with_solution(inst_id, name, sequence, exec_command):
 
 def delete_task(task_id):
     execute_query("DELETE FROM tasks WHERE id = ?", (task_id,))
+
+
+def update_dependency(dep_id, name, command):
+    execute_query(
+        "UPDATE dependencies SET name = ?, check_command = ? WHERE id = ?", 
+        (name, command, dep_id)
+    )
+
+def update_task_with_solution(task_id, name, sequence, exec_command):
+    """Обновляет название задачи и команду её первого решения"""
+    with sqlite3.connect(DB_PATH) as conn:
+        # 1. Обновляем саму задачу
+        conn.execute(
+            "UPDATE tasks SET name = ?, sequence = ? WHERE id = ?", 
+            (name, sequence, task_id)
+        )
+        # 2. Обновляем команду решения (предполагаем, что оно одно и типа bash)
+        # Если у вас сложная система с несколькими решениями, логика будет сложнее
+        conn.execute(
+            "UPDATE solutions SET exec_command = ? WHERE task_id = ?", 
+            (exec_command, task_id)
+        )
+        conn.commit()
