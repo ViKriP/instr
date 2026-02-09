@@ -17,7 +17,9 @@ def HomeView(page: ft.Page):
 
     return ft.View(route="/", controls=[
         ft.AppBar(title=ft.Text("Мои инструкции", color=ft.Colors.BLACK), bgcolor=ft.Colors.ON_SURFACE_VARIANT),
-        list_items
+        list_items,
+        # Кнопка создания новой инструкции
+        ft.FloatingActionButton(icon=ft.Icons.ADD, on_click=lambda _: page.go("/create"))
     ])
 
 def DetailView(page: ft.Page, inst_id):
@@ -25,6 +27,7 @@ def DetailView(page: ft.Page, inst_id):
     return ft.View(route=f"/detail/{inst_id}", controls=[
         ft.AppBar(title=ft.Text(data["name"])),
         ft.Column([
+            ft.IconButton(ft.Icons.EDIT, on_click=lambda _: page.go(f"/edit/{inst_id}")),
             ft.Text(data["description"], italic=True),
             ft.Divider(),
             ft.Text("Задачи:", weight="bold"),
