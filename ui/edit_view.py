@@ -1,7 +1,7 @@
 import flet as ft
 from core.logger import logger
 from database.crud import (
-    get_full_instruction, create_instruction, update_instruction, 
+    get_full_instruction, create_instruction, update_instruction, delete_instruction,
     add_dependency, delete_dependency, add_task_with_solution, delete_task,
     update_dependency, update_task_with_solution
 )
@@ -18,8 +18,8 @@ def InstructionEditView(page: ft.Page, inst_id=None):
     is_editing = inst_id is not None
     
     # Поля формы
-    name_field = ft.TextField(value="Название инструкции", autofocus=True)
-    desc_field = ft.TextField(value="Описание", multiline=True, min_lines=3)
+    name_field = ft.TextField(label="Название инструкции", autofocus=True)
+    desc_field = ft.TextField(label="Описание", multiline=True, min_lines=3)
     
     # Контейнеры для списков (будут заполняться только в режиме редактирования)
     dependencies_list = ft.Column()
@@ -93,15 +93,13 @@ def InstructionEditView(page: ft.Page, inst_id=None):
     # --- Обработчики Основной формы ---
     def save_instruction(e):
         if not name_field.value:
-            name_field.error_text = "Введите название"
+            name_field.error = "Введите название"
             page.update()
             return
 
         if is_editing:
             update_instruction(inst_id, name_field.value, desc_field.value)
             page.show_dialog(ft.SnackBar(ft.Text(value="Инструкция обновлена")))
-            # page.snack_bar = ft.SnackBar(ft.Text("Сохранено!"))
-            # page.snack_bar.open = True
             page.update()
         else:
             new_id = create_instruction(name_field.value, desc_field.value)
@@ -175,8 +173,8 @@ def InstructionEditView(page: ft.Page, inst_id=None):
         load_data()
 
     # --- Диалог добавления Задачи ---
+    task_seq = ft.TextField(label="№", width=70, keyboard_type=ft.KeyboardType.NUMBER)
     task_name = ft.TextField(label="Название шага")
-    task_seq = ft.TextField(label="№", width=50, keyboard_type=ft.KeyboardType.NUMBER)
     task_cmd = ft.TextField(label="Bash команда", multiline=True, min_lines=3)
 
     def add_task_click(e):
@@ -221,7 +219,6 @@ def InstructionEditView(page: ft.Page, inst_id=None):
             task_dialog.title = ft.Text(value="Добавить задачу")
             task_action_btn.text = "Добавить"
 
-        #page.dialog = task_dialog
         if task_dialog not in page.overlay:
             page.overlay.append(task_dialog)
         task_dialog.open = True
@@ -248,7 +245,7 @@ def InstructionEditView(page: ft.Page, inst_id=None):
     task_action_btn = ft.TextButton(content="Добавить", on_click=save_task_click)
     task_dialog = ft.AlertDialog(
         content=ft.Column(controls=[
-            ft.Row(controls=[task_seq, task_name], alignment="spaceBetween"),
+            ft.Row(controls=[task_seq, task_name], alignment=ft.MainAxisAlignment.SPACE_BETWEEN),
             task_cmd
         ], tight=True, width=500),
         actions=[task_action_btn]
@@ -269,26 +266,81 @@ def InstructionEditView(page: ft.Page, inst_id=None):
             ft.Row(controls=[
                 ft.Text(value="Зависимости", size=20, weight="bold"),
                 ft.IconButton(icon=ft.Icons.ADD_CIRCLE, on_click=lambda e: open_dep_dialog(e, None), icon_color="green")
-            ], alignment="spaceBetween"),
+            ], alignment=ft.MainAxisAlignment.SPACE_BETWEEN),
             dependencies_list,
-            
             ft.Divider(),
+            
             ft.Row(controls=[
                 ft.Text(value="Задачи", size=20, weight="bold"),
                 ft.IconButton(icon=ft.Icons.ADD_CIRCLE, on_click=lambda e: open_task_dialog(e, None), icon_color="blue")
-            ], alignment="spaceBetween"),
+            ], alignment=ft.MainAxisAlignment.SPACE_BETWEEN),
             tasks_list
         ]
 
+    # --- Логика удаления из режима редактирования ---
+    def confirm_delete_current(e):
+        delete_instruction(inst_id)
+        confirm_dialog.open = False
+        page.show_dialog(ft.SnackBar(ft.Text("Инструкция удалена")))
+        # После удаления возвращаемся на главную
+        page.go("/") 
+
+    def open_delete_dialog_current(e):
+        # Получаем актуальные данные (они уже загружены в load_data, 
+        # но для точности берем из UI списков или базы)
+        data = get_full_instruction(inst_id)
+        if data:
+            dep_count = len(data['dependencies'])
+            task_count = len(data['tasks'])
+            
+            del_title.value = f"Удалить '{data['name']}'?"
+            del_content.value = (
+                f"Будут удалены:\n"
+                f"- Зависимостей: {dep_count}\n"
+                f"- Задач: {task_count}"
+            )
+            if confirm_dialog not in page.overlay:
+                page.overlay.append(confirm_dialog)
+            confirm_dialog.open = True
+            page.update()
+
+    # Компоненты диалога
+    del_title = ft.Text()
+    del_content = ft.Text()
+    confirm_dialog = ft.AlertDialog(
+        title=del_title,
+        content=del_content,
+        actions=[
+            ft.TextButton("Отмена", on_click=lambda e: setattr(confirm_dialog, 'open', False) or page.update()),
+            ft.ElevatedButton("Удалить", bgcolor="red", color="white", on_click=confirm_delete_current),
+        ],
+        actions_alignment=ft.MainAxisAlignment.END
+    )
+
+    # --- Сборка Actions для AppBar ---
+    app_bar_actions = [
+        ft.IconButton(ft.Icons.SAVE, tooltip="Сохранить", on_click=save_instruction)
+    ]
+    
+    # Если это редактирование, добавляем кнопку Удалить
+    if is_editing:
+        app_bar_actions.insert(0, 
+            ft.IconButton(
+                ft.Icons.DELETE_FOREVER, 
+                tooltip="Удалить инструкцию", 
+                icon_color="red", 
+                on_click=open_delete_dialog_current
+            )
+        )
+
     return ft.View(route=f"/edit/{inst_id}" if inst_id else "/create", controls=[
-        ft.AppBar(title=ft.Text(value="Редактор"), 
-                  actions=[ft.IconButton(icon=ft.Icons.SAVE, 
-                  on_click=save_instruction)]
+        ft.AppBar(
+            title=ft.Text(value="Редактор" if is_editing else "Новая инструкция"),
+            actions=app_bar_actions # Используем наш список кнопок
         ),
-        
         ft.Column(controls=[
             name_field, desc_field,
             ft.ElevatedButton(content="Сохранить основное", on_click=save_instruction),
             *children_sections
-        ], scroll="adaptive")
+        ], scroll="adaptive", expand=True)
     ])
