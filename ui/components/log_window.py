@@ -51,8 +51,8 @@ def build_log_dialog(page: ft.Page):
             height=500,
         ),
         actions=[
-            ft.IconButton(ft.Icons.COPY, tooltip="Копировать", on_click=copy_logs),
-            ft.IconButton(ft.Icons.DELETE_SWEEP, tooltip="Очистить", icon_color=ft.Colors.RED_400, on_click=clear_logs),
+            ft.IconButton(icon=ft.Icons.COPY, tooltip="Копировать", on_click=copy_logs),
+            ft.IconButton(icon=ft.Icons.DELETE_SWEEP, tooltip="Очистить", icon_color=ft.Colors.RED_400, on_click=clear_logs),
             ft.TextButton("Закрыть", on_click=close_dialog),
         ],
         actions_alignment=ft.MainAxisAlignment.END,
