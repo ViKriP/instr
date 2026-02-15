@@ -1,346 +1,239 @@
 import flet as ft
-from core.logger import logger
 from database.crud import (
     get_full_instruction, create_instruction, update_instruction, delete_instruction,
-    add_dependency, delete_dependency, add_task_with_solution, delete_task,
-    update_dependency, update_task_with_solution
+    add_dependency, update_dependency, delete_dependency, 
+    add_task_with_solution, update_task_with_solution, delete_task
 )
 
-@logger.catch(reraise=True)
 def InstructionEditView(page: ft.Page, inst_id=None):
-    """
-    Страница редактирования.
-    Если inst_id is None -> Режим создания новой инструкции.
-    Если inst_id есть -> Режим редактирования (доступно добавление задач).
-    """
-    
-    # --- Состояние ---
     is_editing = inst_id is not None
     
-    # Поля формы
+    # Состояние для редактирования/удаления
+    editing_dep_id = None 
+    editing_task_id = None
+    pending_delete_id = None
+    pending_delete_type = None
+
+    # Поля UI
     name_field = ft.TextField(label="Название инструкции", autofocus=True)
     desc_field = ft.TextField(label="Описание", multiline=True, min_lines=3)
-    
-    # Контейнеры для списков (будут заполняться только в режиме редактирования)
     dependencies_list = ft.Column()
     tasks_list = ft.Column()
 
-    # --- Состояние редактирования дочерних элементов ---
-    # Если None - режим добавления. Если ID - режим редактирования.
-    editing_dep_id = None 
-    editing_task_id = None
+    # --- Вспомогательная функция для открытия диалогов через Overlay ---
+    def open_modal(modal):
+        if modal not in page.overlay:
+            page.overlay.append(modal)
+        modal.open = True
+        page.update()
 
-    def load_data():
-        if is_editing:
-            data = get_full_instruction(inst_id)
-            if data:
-                name_field.value = data["name"]
-                desc_field.value = data["description"]
-                
-                # Рендер Зависимостей
-                dependencies_list.controls.clear()
-                for dep in data["dependencies"]:
-                    dependencies_list.controls.append(
-                        ft.ListTile(
-                            leading=ft.Icon(icon=ft.Icons.MEMORY, color=ft.Colors.BLUE_GREY),
-                            title=ft.Text(value=dep["name"]),
-                            subtitle=ft.Text(value=dep["check_command"], size=12, font_family="monospace"),
-                            trailing=ft.Row(controls=[
-                                # Кнопка РЕДАКТИРОВАТЬ
-                                ft.IconButton(
-                                    icon=ft.Icons.EDIT, 
-                                    icon_color=ft.Colors.BLUE,
-                                    on_click=lambda _, d=dep: open_dep_dialog(None, d)
-                                ),
-                                # Кнопка УДАЛИТЬ
-                                ft.IconButton(
-                                    icon=ft.Icons.DELETE, 
-                                    icon_color=ft.Colors.RED_300,
-                                    on_click=lambda _, id=dep["id"]: delete_dep_click(id)
-                                ),
-                            ], alignment=ft.MainAxisAlignment.END, width=100)
-                        )
-                    )
-                
-                # Рендер Задач
-                tasks_list.controls.clear()
-                for task in data["tasks"]:
-                    cmd = task["solutions"][0]["exec_command"] if task["solutions"] else "No command"
-                    tasks_list.controls.append(
-                        ft.ListTile(
-                            leading=ft.CircleAvatar(content=ft.Text(value=str(task["sequence"]))),
-                            title=ft.Text(value=task["name"]),
-                            subtitle=ft.Text(value=cmd, max_lines=1, overflow=ft.TextOverflow.ELLIPSIS, font_family="monospace"),
-                            trailing=ft.Row(controls=[
-                                # Кнопка РЕДАКТИРОВАТЬ
-                                ft.IconButton(
-                                    icon=ft.Icons.EDIT, 
-                                    icon_color=ft.Colors.BLUE,
-                                    on_click=lambda _, t=task: open_task_dialog(None, t)
-                                ),
-                                # Кнопка УДАЛИТЬ
-                                ft.IconButton(
-                                    icon=ft.Icons.DELETE, 
-                                    icon_color=ft.Colors.RED_300,
-                                    on_click=lambda _, id=task["id"]: delete_task_click(id)
-                                ),
-                            ], alignment=ft.MainAxisAlignment.END, width=100)
-                        )
-                    )
-                
-            page.update()
+    def close_modal(modal):
+        modal.open = False
+        page.update()
 
-    # --- Обработчики Основной формы ---
-    def save_instruction(e):
-        if not name_field.value:
-            name_field.error = "Введите название"
-            page.update()
-            return
-
-        if is_editing:
-            update_instruction(inst_id, name_field.value, desc_field.value)
-            page.show_dialog(ft.SnackBar(ft.Text(value="Инструкция обновлена")))
-            page.update()
-        else:
-            new_id = create_instruction(name_field.value, desc_field.value)
-            # После создания переходим в режим редактирования этой инструкции
-            page.go(f"/edit/{new_id}")
-
-    # --- Диалог добавления Зависимости ---
+    # ==================================================================================
+    # 1. ДИАЛОГ ЗАВИСИМОСТЕЙ
+    # ==================================================================================
     dep_name = ft.TextField(label="Название пакета")
     dep_cmd = ft.TextField(label="Команда проверки")
     
-    def add_dep_click(e):
-        if dep_name.value:
-            add_dependency(inst_id, dep_name.value, dep_cmd.value)
-            dep_dialog.open = False
-            dep_name.value = ""
-            dep_cmd.value = ""
-            load_data() # Обновляем список
-            page.update()
-
-    dep_dialog = ft.AlertDialog(
-        title=ft.Text(value="Добавить зависимость"),
-        content=ft.Column(controls=[dep_name, dep_cmd], tight=True),
-        actions=[ft.TextButton(content="Добавить", on_click=add_dep_click)]
-    )
-
-    def open_dep_dialog(e, dep_data=None):
-        """Открывает диалог. Если передан dep_data — заполняет поля."""
-        nonlocal editing_dep_id
-        if dep_data:
-            # Режим РЕДАКТИРОВАНИЯ
-            editing_dep_id = dep_data["id"]
-            dep_name.value = dep_data["name"]
-            dep_cmd.value = dep_data["check_command"]
-            dep_dialog.title = ft.Text(value="Редактировать зависимость")
-            dep_action_btn.text = "Сохранить"
-        else:
-            # Режим СОЗДАНИЯ
-            editing_dep_id = None
-            dep_name.value = ""
-            dep_cmd.value = ""
-            dep_dialog.title = ft.Text(value="Добавить зависимость")
-            dep_action_btn.text = "Добавить"
-
-        #page.dialog = dep_dialog
-        if dep_dialog not in page.overlay:
-            page.overlay.append(dep_dialog)
-        dep_dialog.open = True
-        page.update()
-
     def save_dep_click(e):
         if dep_name.value:
             if editing_dep_id:
-                # UPDATE
                 update_dependency(editing_dep_id, dep_name.value, dep_cmd.value)
             else:
-                # INSERT
                 add_dependency(inst_id, dep_name.value, dep_cmd.value)
-            
-            dep_dialog.open = False
-            load_data() # Перерисовать список
-            page.update()
-
-    dep_action_btn = ft.TextButton(content="Добавить", on_click=save_dep_click)
-    dep_dialog = ft.AlertDialog(
-        content=ft.Column(controls=[dep_name, dep_cmd], tight=True, width=400),
-        actions=[dep_action_btn]
-    )
-
-    def delete_dep_click(dep_id):
-        delete_dependency(dep_id)
-        load_data()
-
-    # --- Диалог добавления Задачи ---
-    task_seq = ft.TextField(label="№", width=70, keyboard_type=ft.KeyboardType.NUMBER)
-    task_name = ft.TextField(label="Название шага")
-    task_cmd = ft.TextField(label="Bash команда", multiline=True, min_lines=3)
-
-    def add_task_click(e):
-        if task_name.value and task_cmd.value:
-            add_task_with_solution(inst_id, task_name.value, int(task_seq.value), task_cmd.value)
-            task_dialog.open = False
-            task_name.value = ""
-            task_cmd.value = ""
-            # Автоинкремент шага для удобства
-            task_seq.value = str(int(task_seq.value) + 1)
+            close_modal(dep_dialog)
             load_data()
-            page.update()
 
-    task_dialog = ft.AlertDialog(
-        title=ft.Text(value="Добавить задачу"),
-        content=ft.Column(controls=[task_seq, task_name, task_cmd], tight=True),
-        actions=[ft.TextButton(content="Добавить", on_click=add_task_click)]
+    dep_action_btn = ft.TextButton("Добавить", on_click=save_dep_click)
+    dep_dialog = ft.AlertDialog(
+        content=ft.Column([dep_name, dep_cmd], tight=True, width=400),
+        actions=[
+            ft.TextButton("Отмена", on_click=lambda _: close_modal(dep_dialog)),
+            dep_action_btn
+        ]
     )
 
-    def open_task_dialog(e, task_data=None):
-        nonlocal editing_task_id
-        if task_data:
-            # Режим РЕДАКТИРОВАНИЯ
-            editing_task_id = task_data["id"]
-            task_name.value = task_data["name"]
-            task_seq.value = str(task_data["sequence"])
-            # Берем команду из первого решения (упрощение)
-            cmd = task_data["solutions"][0]["exec_command"] if task_data["solutions"] else ""
-            task_cmd.value = cmd
-            
-            task_dialog.title = ft.Text(value="Редактировать задачу")
-            task_action_btn.text = "Сохранить"
+    def open_dep_edit(e, dep_data=None):
+        nonlocal editing_dep_id
+        if dep_data:
+            editing_dep_id = dep_data["id"]
+            dep_name.value = dep_data["name"]
+            dep_cmd.value = dep_data["check_command"]
+            dep_dialog.title = ft.Text("Редактировать зависимость")
+            dep_action_btn.text = "Сохранить"
         else:
-            # Режим СОЗДАНИЯ
-            editing_task_id = None
-            task_name.value = ""
-            # Автоматически ставим следующий номер
-            next_seq = len(tasks_list.controls) + 1
-            task_seq.value = str(next_seq)
-            task_cmd.value = ""
-            
-            task_dialog.title = ft.Text(value="Добавить задачу")
-            task_action_btn.text = "Добавить"
+            editing_dep_id = None
+            dep_name.value = ""
+            dep_cmd.value = ""
+            dep_dialog.title = ft.Text("Добавить зависимость")
+            dep_action_btn.text = "Добавить"
+        open_modal(dep_dialog)
 
-        if task_dialog not in page.overlay:
-            page.overlay.append(task_dialog)
-        task_dialog.open = True
-        page.update()
+    # ==================================================================================
+    # 2. ДИАЛОГ ЗАДАЧ
+    # ==================================================================================
+    task_name = ft.TextField(label="Название шага")
+    task_seq = ft.TextField(label="№", width=60, keyboard_type=ft.KeyboardType.NUMBER)
+    task_cmd = ft.TextField(label="Bash команда", multiline=True, min_lines=3)
 
     def save_task_click(e):
         if task_name.value and task_cmd.value:
-            try:
-                seq = int(task_seq.value)
-            except:
-                seq = 1
-
+            try: seq = int(task_seq.value)
+            except: seq = 1
             if editing_task_id:
-                # UPDATE
                 update_task_with_solution(editing_task_id, task_name.value, seq, task_cmd.value)
             else:
-                # INSERT
                 add_task_with_solution(inst_id, task_name.value, seq, task_cmd.value)
-
-            task_dialog.open = False
+            close_modal(task_dialog)
             load_data()
-            page.update()
 
-    task_action_btn = ft.TextButton(content="Добавить", on_click=save_task_click)
+    task_action_btn = ft.TextButton("Добавить", on_click=save_task_click)
     task_dialog = ft.AlertDialog(
-        content=ft.Column(controls=[
-            ft.Row(controls=[task_seq, task_name], alignment=ft.MainAxisAlignment.SPACE_BETWEEN),
-            task_cmd
-        ], tight=True, width=500),
-        actions=[task_action_btn]
+        content=ft.Column([ft.Row([task_seq, task_name]), task_cmd], tight=True, width=500),
+        actions=[
+            ft.TextButton("Отмена", on_click=lambda _: close_modal(task_dialog)),
+            task_action_btn
+        ]
     )
 
-    def delete_task_click(task_id):
-        delete_task(task_id)
+    def open_task_edit(e, task_data=None):
+        nonlocal editing_task_id
+        if task_data:
+            editing_task_id = task_data["id"]
+            task_name.value = task_data["name"]
+            task_seq.value = str(task_data["sequence"])
+            cmd = task_data["solutions"][0]["exec_command"] if task_data["solutions"] else ""
+            task_cmd.value = cmd
+            task_dialog.title = ft.Text("Редактировать задачу")
+            task_action_btn.text = "Сохранить"
+        else:
+            editing_task_id = None
+            task_name.value = ""
+            task_seq.value = str(len(tasks_list.controls) + 1)
+            task_cmd.value = ""
+            task_dialog.title = ft.Text("Добавить задачу")
+            task_action_btn.text = "Добавить"
+        open_modal(task_dialog)
+
+    # ==================================================================================
+    # 3. ПОДТВЕРЖДЕНИЕ УДАЛЕНИЯ (Child & Main)
+    # ==================================================================================
+    def execute_child_delete(e):
+        if pending_delete_type == "dep": delete_dependency(pending_delete_id)
+        else: delete_task(pending_delete_id)
+        close_modal(child_del_modal)
         load_data()
 
-    # --- Сборка UI ---
-    load_data()
-
-    # Секции зависимостей и задач показываем ТОЛЬКО если мы уже создали инструкцию
-    children_sections = []
-    if is_editing:
-        children_sections = [
-            ft.Divider(),
-            ft.Row(controls=[
-                ft.Text(value="Зависимости", size=20, weight="bold"),
-                ft.IconButton(icon=ft.Icons.ADD_CIRCLE, on_click=lambda e: open_dep_dialog(e, None), icon_color="green")
-            ], alignment=ft.MainAxisAlignment.SPACE_BETWEEN),
-            dependencies_list,
-            ft.Divider(),
-            
-            ft.Row(controls=[
-                ft.Text(value="Задачи", size=20, weight="bold"),
-                ft.IconButton(icon=ft.Icons.ADD_CIRCLE, on_click=lambda e: open_task_dialog(e, None), icon_color="blue")
-            ], alignment=ft.MainAxisAlignment.SPACE_BETWEEN),
-            tasks_list
-        ]
-
-    # --- Логика удаления из режима редактирования ---
-    def confirm_delete_current(e):
-        delete_instruction(inst_id)
-        confirm_dialog.open = False
-        page.show_dialog(ft.SnackBar(ft.Text("Инструкция удалена")))
-        # После удаления возвращаемся на главную
-        page.go("/") 
-
-    def open_delete_dialog_current(e):
-        # Получаем актуальные данные (они уже загружены в load_data, 
-        # но для точности берем из UI списков или базы)
-        data = get_full_instruction(inst_id)
-        if data:
-            dep_count = len(data['dependencies'])
-            task_count = len(data['tasks'])
-            
-            del_title.value = f"Удалить '{data['name']}'?"
-            del_content.value = (
-                f"Будут удалены:\n"
-                f"- Зависимостей: {dep_count}\n"
-                f"- Задач: {task_count}"
-            )
-            if confirm_dialog not in page.overlay:
-                page.overlay.append(confirm_dialog)
-            confirm_dialog.open = True
-            page.update()
-
-    # Компоненты диалога
-    del_title = ft.Text()
-    del_content = ft.Text()
-    confirm_dialog = ft.AlertDialog(
-        title=del_title,
-        content=del_content,
+    child_del_text = ft.Text()
+    child_del_modal = ft.AlertDialog(
+        title=ft.Text("Удаление"),
+        content=child_del_text,
         actions=[
-            ft.TextButton("Отмена", on_click=lambda e: setattr(confirm_dialog, 'open', False) or page.update()),
-            ft.ElevatedButton("Удалить", bgcolor="red", color="white", on_click=confirm_delete_current),
-        ],
-        actions_alignment=ft.MainAxisAlignment.END
+            ft.TextButton("Отмена", on_click=lambda _: close_modal(child_del_modal)),
+            ft.ElevatedButton("Удалить", on_click=execute_child_delete, bgcolor=ft.Colors.RED, color=ft.Colors.WHITE)
+        ]
     )
 
-    # --- Сборка Actions для AppBar ---
-    app_bar_actions = [
-        ft.IconButton(ft.Icons.SAVE, tooltip="Сохранить", on_click=save_instruction)
-    ]
-    
-    # Если это редактирование, добавляем кнопку Удалить
+    def req_child_del(id, name, type_):
+        nonlocal pending_delete_id, pending_delete_type
+        pending_delete_id, pending_delete_type = id, type_
+        child_del_text.value = f"Удалить '{name}'?"
+        open_modal(child_del_modal)
+
+    # Главное удаление
+    def execute_main_delete(e):
+        delete_instruction(inst_id)
+        close_modal(main_del_modal)
+        page.go("/")
+
+    main_del_text = ft.Text()
+    main_del_modal = ft.AlertDialog(
+        title=ft.Text("Удалить инструкцию?"),
+        content=main_del_text,
+        actions=[
+            ft.TextButton("Отмена", on_click=lambda _: close_modal(main_del_modal)),
+            ft.ElevatedButton("Удалить всё", on_click=execute_main_delete, bgcolor=ft.Colors.RED, color=ft.Colors.WHITE)
+        ]
+    )
+
+    def req_main_del(e):
+        data = get_full_instruction(inst_id)
+        main_del_text.value = f"Вы уверены, что хотите удалить '{data['name']}' со всеми задачами?"
+        open_modal(main_del_modal)
+
+    # ==================================================================================
+    # 4. РЕНДЕР И СБОРКА
+    # ==================================================================================
+    def load_data():
+        if not is_editing: return
+        data = get_full_instruction(inst_id)
+        if not data: return
+        
+        name_field.value, desc_field.value = data["name"], data["description"]
+        
+        dependencies_list.controls = [
+            ft.ListTile(
+                leading=ft.Icon(ft.Icons.MEMORY, color=ft.Colors.BLUE_GREY),
+                title=ft.Text(d["name"]),
+                subtitle=ft.Text(value=d["check_command"], size=12, font_family="monospace"),
+                trailing=ft.Row([
+                    ft.IconButton(ft.Icons.EDIT, on_click=lambda _, d=d: open_dep_edit(None, d)),
+                    ft.IconButton(ft.Icons.DELETE, on_click=lambda _, d=d: req_child_del(d["id"], d["name"], "dep"))
+                ], width=100)
+            ) for d in data["dependencies"]
+        ]
+
+        tasks_list.controls = [
+            ft.ListTile(
+                leading=ft.CircleAvatar(content=ft.Text(str(t["sequence"]))),
+                title=ft.Text(t["name"]),
+                subtitle=ft.Text(value=t["solutions"][0]["exec_command"] if t["solutions"] else "No command", 
+                                 max_lines=1, 
+                                 overflow=ft.TextOverflow.ELLIPSIS, 
+                                 font_family="monospace"
+                ),
+                trailing=ft.Row([
+                    ft.IconButton(ft.Icons.EDIT, on_click=lambda _, t=t: open_task_edit(None, t)),
+                    ft.IconButton(ft.Icons.DELETE, on_click=lambda _, t=t: req_child_del(t["id"], t["name"], "task"))
+                ], width=100)
+            ) for t in data["tasks"]
+        ]
+        page.update()
+
+    def save_instruction(e):
+        if not name_field.value: return
+        if is_editing:
+            update_instruction(inst_id, name_field.value, desc_field.value)
+            page.show_dialog(ft.SnackBar(ft.Text("Сохранено")))
+            page.update()
+        else:
+            new_id = create_instruction(name_field.value, desc_field.value)
+            page.go(f"/edit/{new_id}")
+
+    load_data()
+
+    app_bar_actions = [ft.IconButton(ft.Icons.SAVE, on_click=save_instruction)]
     if is_editing:
-        app_bar_actions.insert(0, 
-            ft.IconButton(
-                ft.Icons.DELETE_FOREVER, 
-                tooltip="Удалить инструкцию", 
-                icon_color="red", 
-                on_click=open_delete_dialog_current
-            )
-        )
+        app_bar_actions.insert(1, ft.IconButton(ft.Icons.DELETE_FOREVER, icon_color=ft.Colors.RED, on_click=req_main_del))
 
     return ft.View(route=f"/edit/{inst_id}" if inst_id else "/create", controls=[
-        ft.AppBar(
-            title=ft.Text(value="Редактор" if is_editing else "Новая инструкция"),
-            actions=app_bar_actions # Используем наш список кнопок
-        ),
-        ft.Column(controls=[
+        ft.AppBar(title=ft.Text("Редактор"), actions=app_bar_actions),
+        ft.Column([
             name_field, desc_field,
-            ft.ElevatedButton(content="Сохранить основное", on_click=save_instruction),
-            *children_sections
+            ft.ElevatedButton("Сохранить изменения", icon=ft.Icons.SAVE, on_click=save_instruction),
+            ft.Divider(height=20),
+            ft.Row([ft.Text("Зависимости", size=20, weight="bold"), 
+                    ft.IconButton(ft.Icons.ADD_CIRCLE, on_click=lambda e: open_dep_edit(e, None), icon_color=ft.Colors.GREEN)], 
+                    alignment=ft.MainAxisAlignment.SPACE_BETWEEN
+            ),
+            dependencies_list,
+            ft.Divider(height=20),
+            ft.Row([ft.Text("Задачи", size=20, weight="bold"), 
+                    ft.IconButton(ft.Icons.ADD_CIRCLE, on_click=lambda e: open_task_edit(e, None), icon_color=ft.Colors.BLUE)], 
+                    alignment=ft.MainAxisAlignment.SPACE_BETWEEN
+            ),
+            tasks_list
         ], scroll="adaptive", expand=True)
     ])

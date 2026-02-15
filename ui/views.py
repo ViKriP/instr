@@ -58,7 +58,6 @@ def HomeView(page: ft.Page):
                 f"Это действие необратимо."
             )
             
-            #page.dialog = confirm_dialog
             if confirm_dialog not in page.overlay:
                 page.overlay.append(confirm_dialog)
             confirm_dialog.open = True
@@ -118,12 +117,16 @@ def DetailView(page: ft.Page, inst_id):
     return ft.View(route=f"/detail/{inst_id}", controls=[
         ft.AppBar(title=ft.Text(data["name"])),
         ft.Column(controls=[
-            ft.IconButton(icon=ft.Icons.EDIT, on_click=lambda _: page.go(f"/edit/{inst_id}")),
             ft.Text(data["description"], italic=True),
+            ft.IconButton(icon=ft.Icons.EDIT, icon_color="orange", on_click=lambda _: page.go(f"/edit/{inst_id}")),
+            ft.Divider(),
+            ft.Text("Зависимости:", weight="bold"),
+            *[ft.Text(f"{d['name']} \n ({d['check_command']})") for d in data["dependencies"]],
             ft.Divider(),
             ft.Text("Задачи:", weight="bold"),
-            *[ft.Text(f"{t['sequence']}. {t['name']}") for t in data["tasks"]],
-            ft.ElevatedButton("ВЫПОЛНИТЬ", icon=ft.Icons.PLAY_ARROW, 
-                             on_click=lambda _: open_execution_logs(page, inst_id))
+            *[ft.Text(f"{t['sequence']}. {t['name']} \n {t["solutions"][0]["exec_command"] if t["solutions"] else "No command"} ") for t in data["tasks"]],
+            ft.ElevatedButton("ВЫПОЛНИТЬ", 
+                              icon=ft.Icons.PLAY_ARROW, 
+                              on_click=lambda _: open_execution_logs(page, inst_id))
         ], scroll="adaptive", expand=True)
     ])
