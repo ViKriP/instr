@@ -1,8 +1,5 @@
 import os
-from dotenv import load_dotenv
 
-# Загружаем .env файл
-load_dotenv()
 
 class Settings:
     LOG_LEVEL = os.getenv("LOG_LEVEL", "INFO")
@@ -15,5 +12,6 @@ class Settings:
 
     LOG_PATH_ERRORS = os.getenv("LOG_PATH_ERRORS", "logs/errors.log")
     LOG_SERIALIZE_ERRORS = os.getenv("LOG_SERIALIZE_ERRORS", "False").lower() == "true"
+
 
 settings = Settings()

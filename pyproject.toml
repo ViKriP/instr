@@ -1,0 +1,91 @@
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[project]
+name = "instruction-manager"
+version = "0.1.0"
+description = "Desktop application for managing instructions, built with Flet and Django ORM."
+readme = "README.md"
+requires-python = ">=3.12"
+authors = [
+    { name = "Viktor" }
+]
+classifiers = [
+    "Programming Language :: Python :: 3",
+    "Framework :: Django",
+    "License :: OSI Approved :: MIT License",
+    "Operating System :: OS Independent",
+    "Operating System :: Microsoft :: Windows",
+    "Operating System :: POSIX :: Linux",
+    "Environment :: Win32 (MS Windows)",
+    "Environment :: X11 Applications",
+    "Topic :: Software Development :: User Interfaces",
+]
+
+# Главные зависимости проекта
+dependencies = [
+    "flet==0.80.2",
+    "Django==6.0.2",
+    "python-dotenv==1.2.1",
+    "loguru==0.7.3",
+]
+
+[project.scripts]
+instr = "main:start_app"
+
+[tool.hatch.build.targets.wheel]
+packages = ["apps", "ui", "config"]
+
+[dependency-groups]
+dev = [
+    "pre-commit>=4.5.1",
+    "ruff>=0.15.4",
+]
+
+[tool.ruff]
+line-length = 88
+target-version = "py310"
+
+[tool.ruff.lint]
+# 1. Список групп правил, которые нужно включить
+select = [
+    "E",   # pycodestyle (ошибки)
+    "W",   # pycodestyle (предупреждения)
+    "F",   # Pyflakes (логические ошибки)
+    "I",   # isort (сортировка импортов)
+    "N",   # pep8-naming (именование переменных/классов)
+    "UP",  # pyupgrade (предложение новых синтаксических конструкций)
+    "B",   # flake8-bugbear (поиск вероятных багов)
+    "SIM", # flake8-simplify (советы по упрощению кода)
+]
+
+# 2. Правила, которые стоит игнорировать (вкусовщина)
+ignore = [
+    "D100", # Отсутствие докстринга в модуле
+    "D103", # Отсутствие докстринга в функции
+    "N802", # Function name should be lowercase
+    "E402", # Module level import not at top of file
+]
+
+# 3. Разрешить автоматическое исправление (fix) для этих правил
+fixable = ["ALL"]
+
+[tool.ruff.format]
+# Настройки форматтера (аналог Black)
+quote-style = "double"
+indent-style = "space"
+
+[tool.ruff.lint.per-file-ignores]
+# Игнорируем специфические правила в папках миграций
+"**/migrations/*.py" = [
+    "E501", # Длинные строки (автогенерация часто их создает)
+    "N806", # Переменные капсом (в миграциях Django это норма)
+]
+
+# Игнорируем правила для тестов
+"**/tests/*.py" = [
+    "S101", # Разрешаем использование 'assert' (в тестах это база)
+    "D",    # Разрешаем не писать документацию (докстринги) к тестам
+    "ARG001", # Разрешаем неиспользуемые аргументы (часто для фикстур)
+]
